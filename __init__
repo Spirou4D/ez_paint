@@ -44,7 +44,7 @@ import time
 import copy
 import math
 from bpy_extras.io_utils import ImportHelper
-
+from bpy.types import Operator, Menu, Panel, UIList
 
 #################################################
 #                                               #
@@ -391,7 +391,7 @@ class PackTree(object):
 #                                        #
 ##########################################
 
-class AddDefaultImage(bpy.types.Operator):
+class AddDefaultImage(Operator):
     '''Create and assign a new default image to the object'''
     bl_idname = "object.add_default_image"
     bl_label = "Add default image"
@@ -415,7 +415,7 @@ class AddDefaultImage(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class AutoMergeUV(bpy.types.Operator):
+class AutoMergeUV(Operator):
     '''Have UV Merge enabled by default for merge actions'''
     bl_idname = "paint.auto_merge_uv"
     bl_label = "AutoMerge UV"
@@ -435,7 +435,7 @@ class AutoMergeUV(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class MakeBrushImageTexture(bpy.types.Operator):        #class command
+class MakeBrushImageTexture(Operator):        #class command
     bl_label = "New Texture from Image"
     bl_idname = "gizmo.image_texture"
 
@@ -471,7 +471,7 @@ class MakeBrushImageTexture(bpy.types.Operator):        #class command
         return set()
 
 
-class MakeBrushImageTextureMask(bpy.types.Operator):    #class command
+class MakeBrushImageTextureMask(Operator):    #class command
     bl_label = "New Mask Texture from Image"
     bl_idname = "gizmo.image_texture_mask"
 
@@ -510,13 +510,81 @@ class MakeBrushImageTextureMask(bpy.types.Operator):    #class command
         return set()
 
 
-class BrushPopup(bpy.types.Operator):
+class BrushPopup(Operator):
     bl_idname = "view3d.brush_popup"
     bl_label = "Brush settings"
     bl_options = {'REGISTER', 'UNDO'}
 
+
+    @staticmethod
+    def paint_settings(context):
+        toolsettings = context.tool_settings
+
+        if context.vertex_paint_object:
+            return toolsettings.vertex_paint
+        elif context.weight_paint_object:
+            return toolsettings.weight_paint
+        elif context.image_paint_object:
+            if (toolsettings.image_paint and toolsettings.image_paint.detect_data()):
+                return toolsettings.image_paint
+
+            return None
+        return None
+
+    @staticmethod
+    def unified_paint_settings(parent, context):
+        ups = context.tool_settings.unified_paint_settings
+        parent.label(text="Unified Settings:")
+        row = parent.row()
+        row.prop(ups, "use_unified_size", text="Size")
+        row.prop(ups, "use_unified_strength", text="Strength")
+        if context.weight_paint_object:
+            parent.prop(ups, "use_unified_weight", text="Weight")
+        elif context.vertex_paint_object or context.image_paint_object:
+            parent.prop(ups, "use_unified_color", text="Color")
+        else:
+            parent.prop(ups, "use_unified_color", text="Color")
+
+    @staticmethod
+    def prop_unified_size(parent, context, brush, prop_name, icon='NONE', text="", slider=False):
+        ups = context.tool_settings.unified_paint_settings
+        ptr = ups if ups.use_unified_size else brush
+        parent.prop(ptr, prop_name, icon=icon, text=text, slider=slider)
+
+    @staticmethod
+    def prop_unified_strength(parent, context, brush, prop_name, icon='NONE', text="", slider=False):
+        ups = context.tool_settings.unified_paint_settings
+        ptr = ups if ups.use_unified_strength else brush
+        parent.prop(ptr, prop_name, icon=icon, text=text, slider=slider)
+
+    @staticmethod
+    def prop_unified_weight(parent, context, brush, prop_name, icon='NONE', text="", slider=False):
+        ups = context.tool_settings.unified_paint_settings
+        ptr = ups if ups.use_unified_weight else brush
+        parent.prop(ptr, prop_name, icon=icon, text=text, slider=slider)
+
+    @staticmethod
+    def prop_unified_color(parent, context, brush, prop_name, text=""):
+        ups = context.tool_settings.unified_paint_settings
+        ptr = ups if ups.use_unified_color else brush
+        parent.prop(ptr, prop_name, text=text)
+
+    @staticmethod
+    def prop_unified_color_picker(parent, context, brush, prop_name, value_slider=True):
+        ups = context.tool_settings.unified_paint_settings
+        ptr = ups if ups.use_unified_color else brush
+        parent.template_color_picker(ptr, prop_name, value_slider=value_slider)
+
+
     def check(self, context):
+        '''
+        settings = self.paint_settings(context)
+        brush_updated = settings.brush.is_updated
+        if brush_updated:
+            return True
+        '''
         return True
+
 
     @classmethod
     def poll(self, context):
@@ -526,135 +594,216 @@ class BrushPopup(bpy.types.Operator):
             B = context.mode == 'PAINT_TEXTURE'
             return A and B
 
-    def invoke(self, context, event):
-        if context.space_data.type == 'IMAGE_EDITOR':
-            context.space_data.mode = 'PAINT'
-        return context.window_manager.\
-                                invoke_props_dialog(self, width=160)
 
-    def execute(self, context):
-        return {'FINISHED'}
-
-    def draw(self, context):
-        # Init values
-        toolsettings = context.tool_settings
-        brush = toolsettings.image_paint.brush
+    def brush_texpaint_common(self, layout, context, brush, settings, projpaint=False):
         capabilities = brush.image_paint_capabilities
-        unified = toolsettings.unified_paint_settings
-        settings = toolsettings.image_paint
 
-        layout = self.layout
-        # colour buttons
         col = layout.column()
-        split = col.split(percentage = 0.15)
-        split.prop(brush, "color", text="")
-
-        #Verticale = 1e-6 = 0.000001
-        split.scale_y = 1e-6
-        col.template_color_picker(brush, "color", value_slider=True)
-        col.scale_y = 1.10
 
         if brush.image_tool in {'DRAW', 'FILL'}:
             if brush.blend not in {'ERASE_ALPHA', 'ADD_ALPHA'}:
-                split = col.split(percentage = 0.30)
-                row = col.row(align=True)
-                row.prop(brush, "color", text="")
-                row.prop(brush, "secondary_color", text="")
-                row.separator()
-                row.operator("paint.brush_colors_flip",\
-                                    text="", icon='FILE_REFRESH')
+                if not brush.use_gradient:
+                    self.prop_unified_color_picker(col, context, brush, "color", value_slider=True)
 
+                if settings.palette:
+                    col.template_palette(settings, "palette", color=True)
 
-        # imagepaint tool operate buttons
-        col = layout.split().column()
-        col.template_ID_preview(settings, "brush", \
-                                    new="brush.add", rows=3, cols=8)
+                if brush.use_gradient:
+                    col.label("Gradient Colors")
+                    col.template_color_ramp(brush, "gradient", expand=True)
+
+                    if brush.image_tool != 'FILL':
+                        col.label("Background Color")
+                        row = col.row(align=True)
+                        self.prop_unified_color(row, context, brush, "secondary_color", text="")
+
+                    if brush.image_tool == 'DRAW':
+                        col.prop(brush, "gradient_stroke_mode", text="Mode")
+                        if brush.gradient_stroke_mode in {'SPACING_REPEAT', 'SPACING_CLAMP'}:
+                            col.prop(brush, "grad_spacing")
+                    elif brush.image_tool == 'FILL':
+                        col.prop(brush, "gradient_fill_mode")
+                else:
+                    row = col.row(align=True)
+                    self.prop_unified_color(row, context, brush, "color", text="")
+                    if brush.image_tool == 'FILL' and not projpaint:
+                        col.prop(brush, "fill_threshold")
+                    else:
+                        self.prop_unified_color(row, context, brush, "secondary_color", text="")
+                        row.separator()
+                        row.operator("paint.brush_colors_flip", icon='FILE_REFRESH', text="")
+
+        elif brush.image_tool == 'SOFTEN':
+            col = layout.column(align=True)
+            col.row().prop(brush, "direction", expand=True)
+            col.separator()
+            col.prop(brush, "sharp_threshold")
+            if not projpaint:
+                col.prop(brush, "blur_kernel_radius")
+            col.separator()
+            col.prop(brush, "blur_mode")
+        elif brush.image_tool == 'MASK':
+            col.prop(brush, "weight", text="Mask Value", slider=True)
+
+        elif brush.image_tool == 'CLONE':
+            col.separator()
+            if projpaint:
+                if settings.mode == 'MATERIAL':
+                    col.prop(settings, "use_clone_layer", text="Clone from paint slot")
+                elif settings.mode == 'IMAGE':
+                    col.prop(settings, "use_clone_layer", text="Clone from image/UV map")
+
+                if settings.use_clone_layer:
+                    ob = context.active_object
+                    col = layout.column()
+
+                    if settings.mode == 'MATERIAL':
+                        if len(ob.material_slots) > 1:
+                            col.label("Materials")
+                            col.template_list("MATERIAL_UL_matslots", "",
+                                              ob, "material_slots",
+                                              ob, "active_material_index", rows=2)
+
+                        mat = ob.active_material
+                        if mat:
+                            col.label("Source Clone Slot")
+                            col.template_list("TEXTURE_UL_texpaintslots", "",
+                                              mat, "texture_paint_images",
+                                              mat, "paint_clone_slot", rows=2)
+
+                    elif settings.mode == 'IMAGE':
+                        mesh = ob.data
+
+                        clone_text = mesh.uv_texture_clone.name if mesh.uv_texture_clone else ""
+                        col.label("Source Clone Image")
+                        col.template_ID(settings, "clone_image")
+                        col.label("Source Clone UV Map")
+                        col.menu("VIEW3D_MT_tools_projectpaint_clone", text=clone_text, translate=False)
+            else:
+                col.prop(brush, "clone_image", text="Image")
+                col.prop(brush, "clone_alpha", text="Alpha")
+
+        col.separator()
+
+        if capabilities.has_radius:
+            row = col.row(align=True)
+            self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
+            self.prop_unified_size(row, context, brush, "use_pressure_size")
+
+        row = col.row(align=True)
+
+        if capabilities.has_space_attenuation:
+            row.prop(brush, "use_space_attenuation", toggle=True, icon_only=True)
+
+        self.prop_unified_strength(row, context, brush, "strength", text="Strength")
+        self.prop_unified_strength(row, context, brush, "use_pressure_strength")
 
         if brush.image_tool in {'DRAW', 'FILL'}:
-                if settings.palette:
-                    col.template_palette(settings, \
-                                                "palette", color=True)
+            col.separator()
+            col.prop(brush, "blend", text="Blend")
 
-        row = col.row(align=True)                        #new line
-        # curve type buttons
-        row.operator("brush.curve_preset",
-                        icon="SMOOTHCURVE", text="").shape = 'SMOOTH'
-        row.operator("brush.curve_preset",
-                        icon="SPHERECURVE", text="").shape = 'ROUND'
-        row.operator("brush.curve_preset",
-                        icon="ROOTCURVE", text="").shape = 'ROOT'
-        row.operator("brush.curve_preset",
-                        icon="SHARPCURVE", text="").shape = 'SHARP'
-        row.operator("brush.curve_preset",
-                        icon="LINCURVE", text="").shape = 'LINE'
-        row.operator("brush.curve_preset",
-                        icon="NOCURVE", text="").shape = 'MAX'
-
-
-        # radius buttons depend...on the current Brush Unified Settings
-        col = col.column(align=True)
-        row = col.row(align=True)
-        row.prop(brush, "stroke_method", text="")
-        if brush.use_airbrush:
-            row.prop(brush, "rate", text="Rate", slider=True)
-        if brush.brush_capabilities.has_smooth_stroke:
-                col.prop(brush, "use_smooth_stroke")
-
-        row = col.row(align=True)                            #new line
-        if (unified.use_unified_size):
-            row.prop(unified, "size", text="Radius", slider=True)
-            row.prop(unified, "use_pressure_size", toggle=True, text="")
-        else:
-            row.prop(brush, "size", text="Radius", slider=True)
-            row.prop(brush, "use_pressure_size", toggle=True, text="")
-
-        # strength buttons
-        row = col.row(align=True)                           #new line
-        if (unified.use_unified_strength):
-            row.prop(unified, "strength", text="Strength", slider=True)
-            row.prop(unified, "use_pressure_strength", toggle=True, text="")
-        else:
-            row.prop(brush, "strength", text="Strength", slider=True)
-            row.prop(brush, "use_pressure_strength", toggle=True, text="")
-
-        # jitter buttons
-        row = col.row(align=True)                           #new line
-        if brush.use_relative_jitter:
-            row.prop(brush, "jitter", slider=True)
-        else:
-            row.prop(brush, "jitter_absolute")
-        row.prop(brush, "use_pressure_jitter", toggle=True, text="")
-
-        # spacing buttons
-        row = col.row(align=True)                           #new line
-        row.prop(brush, "spacing", slider=True)
-        row.prop(brush, "use_space", toggle=True, text="", icon="FILE_TICK")
-
-
+        col = layout.column()
 
         # use_accumulate
         if capabilities.has_accumulate:
-            row = col.row(align=True)                       #new line
-            row.prop(brush, "use_accumulate")
+            col = layout.column(align=True)
+            col.prop(brush, "use_accumulate")
 
-        # alpha and blending mode buttons
-        row = col.row(align=True)                           #new line
-        split1 = row.split()
-        split1.prop(brush, "use_alpha", text="Alpha")
+        if projpaint:
+            col.prop(brush, "use_alpha")
 
-        if brush.image_tool in {'DRAW', 'FILL'}:
-            split2 = row.split()
-            split2.row(align=False)                        #new line
-            split2.prop(brush, "blend", text="")
+        col.prop(brush, "use_gradient")
 
         col.separator()
         col.template_ID(settings, "palette", new="palette.new")
 
 
-class TexturePopup(bpy.types.Operator):
+    def draw(self, context):
+        # Init values
+        toolsettings = context.tool_settings
+        settings = self.paint_settings(context)
+        brush = settings.brush
+
+        layout = self.layout
+
+        # imagepaint tool operate buttons
+        col = layout.split().column()
+        col.template_ID_preview(settings, "brush", new="brush.add", rows=3, cols=8)
+
+        ########################################################################
+        # Texture Paint Mode #
+
+        if context.image_paint_object and brush:
+            self.brush_texpaint_common( layout, context, brush, settings, True)
+
+        ########################################################################
+        # Weight Paint Mode #
+        elif context.weight_paint_object and brush:
+
+            col = layout.column()
+
+            row = col.row(align=True)
+            self.prop_unified_weight(row, context, brush, "weight", slider=True, text="Weight")
+
+            row = col.row(align=True)
+            self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
+            self.prop_unified_size(row, context, brush, "use_pressure_size")
+
+            row = col.row(align=True)
+            self.prop_unified_strength(row, context, brush, "strength", text="Strength")
+            self.prop_unified_strength(row, context, brush, "use_pressure_strength")
+
+            col.prop(brush, "vertex_tool", text="Blend")
+
+            if brush.vertex_tool == 'BLUR':
+                col.prop(brush, "use_accumulate")
+                col.separator()
+
+            col = layout.column()
+            col.prop(toolsettings, "use_auto_normalize", text="Auto Normalize")
+            col.prop(toolsettings, "use_multipaint", text="Multi-Paint")
+
+        ########################################################################
+        # Vertex Paint Mode #
+        elif context.vertex_paint_object and brush:
+            col = layout.column()
+            self.prop_unified_color_picker(col, context, brush, "color", value_slider=True)
+            if settings.palette:
+                col.template_palette(settings, "palette", color=True)
+            self.prop_unified_color(col, context, brush, "color", text="")
+
+            col.separator()
+            row = col.row(align=True)
+            self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
+            self.prop_unified_size(row, context, brush, "use_pressure_size")
+
+            row = col.row(align=True)
+            self.prop_unified_strength(row, context, brush, "strength", text="Strength")
+            self.prop_unified_strength(row, context, brush, "use_pressure_strength")
+
+            col.separator()
+            col.prop(brush, "vertex_tool", text="Blend")
+
+            col.separator()
+            col.template_ID(settings, "palette", new="palette.new")
+
+
+    def invoke(self, context, event):
+        if context.space_data.type == 'IMAGE_EDITOR':
+            context.space_data.mode = 'PAINT'
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self, width=160)
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
+class TexturePopup(Operator):
     bl_idname = "view3d.texture_popup"
     bl_label = "Textures and Mask Textures settings"
     bl_options = {'REGISTER', 'UNDO'}
+
+    toggleMenu = bpy.props.BoolProperty(default=True)  # toogle texture or Mask menu
 
     def check(self, context):
         return True
@@ -679,77 +828,85 @@ class TexturePopup(bpy.types.Operator):
 
         # textures panel
         layout = self.layout
-        col = layout.column()                                   #TEXTURES
-        col.template_ID_preview(brush, "texture", new="texture.new", \
-                                                            rows=3, cols=8)
-        layout.label(text="Brush Mapping:")
 
-        # texture_map_mode
-        layout.row().prop(tex_slot, "tex_paint_map_mode", text="")
-        layout.separator()
+        # Parameter Toggle Menu
+        _TITLE = 'TEXTURES' if self.toggleMenu else 'MASKS'
+        _ICON = 'TEXTURE' if self.toggleMenu else 'MOD_MASK'
+        Menu = layout.row()
+        Menu.prop(self, "toggleMenu", text=_TITLE, icon=_ICON)
 
-        if tex_slot.map_mode == 'STENCIL':
-            if brush.texture and brush.texture.type == 'IMAGE':
-                layout.operator("brush.stencil_fit_image_aspect")
-            layout.operator("brush.stencil_reset_transform")
 
-        # angle and texture_angle_source
-        if tex_slot.has_texture_angle:
+        if self.toggleMenu:
+            col = layout.column()                                   #TEXTURES
+            col.template_ID_preview(brush, "texture", new="texture.new", \
+                                                                rows=3, cols=8)
+            layout.label(text="Brush Mapping:")
+
+            # texture_map_mode
+            layout.row().prop(tex_slot, "tex_paint_map_mode", text="")
+            layout.separator()
+
+            if tex_slot.map_mode == 'STENCIL':
+                if brush.texture and brush.texture.type == 'IMAGE':
+                    layout.operator("brush.stencil_fit_image_aspect")
+                layout.operator("brush.stencil_reset_transform")
+
+            # angle and texture_angle_source
+            if tex_slot.has_texture_angle:
+                col = layout.column()
+                col.label(text="Angle:")
+                col.prop(tex_slot, "angle", text="")
+                if tex_slot.has_texture_angle_source:
+                    col.prop(tex_slot, "use_rake", text="Rake")
+
+                    if brush.brush_capabilities.has_random_texture_angle and tex_slot.has_random_texture_angle:
+                        col.prop(tex_slot, "use_random", text="Random")
+                        if tex_slot.use_random:
+                            col.prop(tex_slot, "random_angle", text="")
+
+
+            # scale and offset
+            split = layout.split()
+            split.prop(tex_slot, "offset")
+            split.prop(tex_slot, "scale")
+
+            row = layout.row()
+            row.operator(MakeBrushImageTexture.bl_idname)
+        else:
+            col = layout.column()                                 #MASK TEXTURE
+            col.template_ID_preview(brush, "mask_texture", new="texture.new", \
+                                                                rows=3, cols=8)
+            layout.label(text="Mask Mapping:")
+            # map_mode
+            layout.row().prop(mask_tex_slot, "mask_map_mode", text="")
+            layout.separator()
+
+            if mask_tex_slot.map_mode == 'STENCIL':
+                if brush.mask_texture and brush.mask_texture.type == 'IMAGE':
+                    layout.operator("brush.stencil_fit_image_aspect").mask = True
+                layout.operator("brush.stencil_reset_transform").mask = True
+
             col = layout.column()
-            col.label(text="Angle:")
-            col.prop(tex_slot, "angle", text="")
-            if tex_slot.has_texture_angle_source:
-                col.prop(tex_slot, "use_rake", text="Rake")
+            col.prop(brush, "use_pressure_masking", text="")
+            # angle and texture_angle_source
+            if mask_tex_slot.has_texture_angle:
+                col = layout.column()
+                col.label(text="Angle:")
+                col.prop(mask_tex_slot, "angle", text="")
+                if mask_tex_slot.has_texture_angle_source:
+                    col.prop(mask_tex_slot, "use_rake", text="Rake")
 
-                if brush.brush_capabilities.has_random_texture_angle and tex_slot.has_random_texture_angle:
-                    col.prop(tex_slot, "use_random", text="Random")
-                    if tex_slot.use_random:
-                        col.prop(tex_slot, "random_angle", text="")
+                    if brush.brush_capabilities.has_random_texture_angle and mask_tex_slot.has_random_texture_angle:
+                        col.prop(mask_tex_slot, "use_random", text="Random")
+                        if mask_tex_slot.use_random:
+                            col.prop(mask_tex_slot, "random_angle", text="")
 
-        # scale and offset
-        split = layout.split()
-        split.prop(tex_slot, "offset")
-        split.prop(tex_slot, "scale")
-
-        row = layout.row()
-        row.operator(MakeBrushImageTexture.bl_idname)
-        layout.separator() #=================================================
-
-
-        col = layout.column()                                 #MASK TEXTURE
-        col.template_ID_preview(brush, "mask_texture", new="texture.new", \
-                                                            rows=3, cols=8)
-        layout.label(text="Mask Mapping:")
-        # map_mode
-        layout.row().prop(mask_tex_slot, "mask_map_mode", text="")
-        layout.separator()
-
-        if mask_tex_slot.map_mode == 'STENCIL':
-            if brush.mask_texture and brush.mask_texture.type == 'IMAGE':
-                layout.operator("brush.stencil_fit_image_aspect").mask = True
-            layout.operator("brush.stencil_reset_transform").mask = True
-
-        col = layout.column()
-        col.prop(brush, "use_pressure_masking", text="")
-        # angle and texture_angle_source
-        if mask_tex_slot.has_texture_angle:
-            col = layout.column()
-            col.label(text="Angle:")
-            col.prop(mask_tex_slot, "angle", text="")
-            if mask_tex_slot.has_texture_angle_source:
-                col.prop(mask_tex_slot, "use_rake", text="Rake")
-
-                if brush.brush_capabilities.has_random_texture_angle and mask_tex_slot.has_random_texture_angle:
-                    col.prop(mask_tex_slot, "use_random", text="Random")
-                    if mask_tex_slot.use_random:
-                        col.prop(mask_tex_slot, "random_angle", text="")
-
-        # scale and offset
-        split = layout.split()
-        split.prop(mask_tex_slot, "offset")
-        split.prop(mask_tex_slot, "scale")
-        row = layout.row()
-        row.operator(MakeBrushImageTextureMask.bl_idname)
+            # scale and offset
+            split = layout.split()
+            split.prop(mask_tex_slot, "offset")
+            split.prop(mask_tex_slot, "scale")
+            row = layout.row()
+            row.operator(MakeBrushImageTextureMask.bl_idname)
 
 
     def invoke(self, context, event):
@@ -762,7 +919,7 @@ class TexturePopup(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class Slots_projectpaint(bpy.types.Operator):
+class Slots_projectpaint(Operator):
     bl_idname = "slots.projectpaint"
     bl_label = "Slots & VGroups"
     bl_options = {'REGISTER', 'UNDO'}
@@ -889,7 +1046,7 @@ class Slots_projectpaint(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class ChangeSelection(bpy.types.Operator):
+class ChangeSelection(Operator):
     '''Select more or less vertices/edges/faces, connected to the original selection'''
     bl_idname = "paint.change_selection"
     bl_label = "Change selection"
@@ -915,7 +1072,7 @@ class ChangeSelection(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class DefaultMaterial(bpy.types.Operator):
+class DefaultMaterial(Operator):
     '''Add a default dif/spec/normal material to an object'''
     bl_idname = "object.default_material"
     bl_label = "Default material"
@@ -961,7 +1118,7 @@ class DefaultMaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class GridTexture(bpy.types.Operator):
+class GridTexture(Operator):
     '''Toggle between current texture and UV / Colour grids'''
     bl_idname = "paint.grid_texture"
     bl_label = "Grid texture"
@@ -1028,7 +1185,7 @@ class GridTexture(bpy.types.Operator):
             return {'FINISHED'}
 
 
-class MassLinkAppend(bpy.types.Operator, ImportHelper):
+class MassLinkAppend(Operator, ImportHelper):
     '''Import objects from multiple blend-files at the same time'''
     bl_idname = "wm.mass_link_append"
     bl_label = "Mass Link/Append"
@@ -1095,7 +1252,7 @@ class MassLinkAppend(bpy.types.Operator, ImportHelper):
         return {'FINISHED'}
 
 
-class ReloadImage(bpy.types.Operator):      #unused class?
+class ReloadImage(Operator):      #unused class?
     '''Reload image displayed in image-editor'''
     bl_idname = "paint.reload_image"
     bl_label = "Reload image"
@@ -1114,7 +1271,7 @@ class ReloadImage(bpy.types.Operator):      #unused class?
         return{'FINISHED'}
 
 
-class ReloadImages(bpy.types.Operator):
+class ReloadImages(Operator):
     '''Reload all images'''
     bl_idname = "paint.reload_images"
     bl_label = "Reload all images"
@@ -1132,7 +1289,7 @@ class ReloadImages(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SampleColor(bpy.types.Operator):
+class SampleColor(Operator):
     '''Sample color'''
     bl_idname = "paint.sample_color_custom"
     bl_label = "Sample color"
@@ -1151,7 +1308,7 @@ class SampleColor(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SaveImage(bpy.types.Operator):
+class SaveImage(Operator):
     '''Save image displayed in image-editor'''
     bl_idname = "paint.save_image"
     bl_label = "Save image"
@@ -1164,7 +1321,7 @@ class SaveImage(bpy.types.Operator):
         return{'FINISHED'}
 
 
-class SaveImages(bpy.types.Operator):
+class SaveImages(Operator):
     '''Save all images'''
     bl_idname = "wm.save_images"
     bl_label = "Save all images"
@@ -1184,7 +1341,7 @@ class SaveImages(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SyncSelection(bpy.types.Operator):
+class SyncSelection(Operator):
     '''Sync selection from uv-editor to 3d-view'''
     bl_idname = "uv.sync_selection"
     bl_label = "Sync selection"
@@ -1305,7 +1462,7 @@ class SyncSelection(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-class ToggleAddMultiply(bpy.types.Operator):
+class ToggleAddMultiply(Operator):
     '''Toggle between Add and Multiply blend modes'''
     bl_idname = "paint.toggle_add_multiply"
     bl_label = "Toggle add/multiply"
@@ -1324,7 +1481,7 @@ class ToggleAddMultiply(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class ToggleColorSoftLightScreen(bpy.types.Operator):
+class ToggleColorSoftLightScreen(Operator):
     '''Toggle between Color and Softlight and Screen blend modes'''
     bl_idname = "paint.toggle_color_soft_light_screen"
     bl_label = "Toggle color-softlight-screen"
@@ -1345,7 +1502,7 @@ class ToggleColorSoftLightScreen(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class ToggleAlphaMode(bpy.types.Operator):
+class ToggleAlphaMode(Operator):
     '''Toggle between Add Alpha and Erase Alpha blend modes'''
     bl_idname = "paint.toggle_alpha_mode"
     bl_label = "Toggle alpha mode"
@@ -1400,7 +1557,7 @@ class InitPaintBlend(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class ToggleUVSelectSync(bpy.types.Operator):
+class ToggleUVSelectSync(Operator):
     '''Toggle use_uv_select_sync in the UV editor'''
     bl_idname = "uv.toggle_uv_select_sync"
     bl_label = "UV Select Sync"
@@ -1457,7 +1614,7 @@ class TexturePaintPlusProps(bpy.types.PropertyGroup):
 
 #legend:
 #(--) =  No shortcut!
-classes =   [AddDefaultImage,               #add defauft paint image (Shift ALt X) 3DVIEW
+classes =   [AddDefaultImage,                #add defauft paint image (Shift ALt X) 3DVIEW
             AutoMergeUV,                    #add "autofusion UVs" in >> UI>Mesh menu [EDIT MODE] (--)
             MakeBrushImageTexture,          #add a paint texture (--)
             MakeBrushImageTextureMask,      #add a mask paint texture (--)
