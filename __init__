@@ -1497,6 +1497,7 @@ class DisplayActivePaintSlot(Operator):
             area.type = 'IMAGE_EDITOR'
             # Assign the Image
             context.area.spaces.active.image = image
+            context.space_data.mode = 'PAINT'
         else:
             self.report({'INFO'}, "No active Slot")
         return {'FINISHED'}
