@@ -24,7 +24,7 @@
 
 bl_info = {
     'name': 'EZ_Paint',
-    'author': 'Bart Crouch, scorpion81, Spirou4D, artistCDMJ, brickmann',
+    'author': 'Bart Crouch, scorpion81, Spirou4D, artistCDMJ, brockmann',
     'version': (3, 11),
     'blender': (2, 79, 0),
     'location': 'Paint editor > 3D view',
