@@ -25,7 +25,7 @@
 bl_info = {
     'name': 'EZ_Paint',
     'author': 'Bart Crouch, scorpion81, Spirou4D, artistCDMJ, brockmann',
-    'version': (3, 11),
+    'version': (3, 12),
     'blender': (2, 79, 0),
     'location': 'Paint editor > 3D view',
     'warning': '',
@@ -95,12 +95,12 @@ def toolmode_draw_callback(self, context):
     blf.draw(0, text)
 
     # Texte estompé selon le temps, au dessus de la brosse à 40px en rouge
-    dt = time.time() - wm["tpp_toolmode_time"]
+    dt = time.time() - wm["ezp_toolmode_time"]
     if dt < 2:    # Aténuation de l'affichage selon le temps
-        if "tpp_toolmode_brushloc" not in wm:
+        if "ezp_toolmode_brushloc" not in wm:
             return
 
-        brush_x, brush_y = wm["tpp_toolmode_brushloc"]
+        brush_x, brush_y = wm["ezp_toolmode_brushloc"]
         brush_x -= blf.dimensions(0, text)[0] / 2
         bgl.glColor4f(0.9, 0.16, 0.16, min(1.0, (2 - dt)*2))
         blf.position(0, brush_x, brush_y + 40, 0)
@@ -112,26 +112,26 @@ def toolmode_draw_callback(self, context):
 # ajouter une propriété d'ID au gestionnaire de fenêtre
 def init_temp_props():
     wm = bpy.context.window_manager
-    wm["tpp_automergeuv"] = False                 # 1 int
-    wm["tpp_toolmode_time"] = time.time()         # 1 int in sec
-    wm["tpp_toolmode_brushloc"] = (-1, -1)        # 2 int
+    wm["ezp_automergeuv"] = False                 # 1 int
+    wm["ezp_toolmode_time"] = time.time()         # 1 int in sec
+    wm["ezp_toolmode_brushloc"] = (-1, -1)        # 2 int
 
 
 
 # enlever toutes propriétés d'ID du gestionnaire de fenêtres
 def remove_temp_props():
     wm = bpy.context.window_manager
-    if "tpp_automergeuv" in wm:
-        del wm["tpp_automergeuv"]
+    if "ezp_automergeuv" in wm:
+        del wm["ezp_automergeuv"]
 
-    if "tpp_toolmode_time" in wm:
-        del wm["tpp_toolmode_time"]
+    if "ezp_toolmode_time" in wm:
+        del wm["ezp_toolmode_time"]
 
-    if "tpp_toolmode_brushloc" in wm:
-        del wm["tpp_toolmode_brushloc"]
+    if "ezp_toolmode_brushloc" in wm:
+        del wm["ezp_toolmode_brushloc"]
 
-    if "tpp_toolmode_on_screen" in wm:
-        del wm["tpp_toolmode_on_screen"]
+    if "ezp_toolmode_on_screen" in wm:
+        del wm["ezp_toolmode_on_screen"]
 
 
 # -----------------------------------------------------------------------------
@@ -1287,9 +1287,9 @@ class ToggleToolmodeOnScreen(Operator):
     def invoke(self, context, event):
         init_temp_props()
         wm = context.window_manager
-        wm["tpp_toolmode_on_screen"] = True
+        wm["ezp_toolmode_on_screen"] = True
         co2d = (event.mouse_region_x, event.mouse_region_y)
-        wm["tpp_toolmode_brushloc"] = co2d
+        wm["ezp_toolmode_brushloc"] = co2d
 
         args = (self, context)
         self._handle = bpy.types.SpaceView3D.draw_handler_add(\
@@ -1318,10 +1318,10 @@ class ToggleAddMultiply(Operator):
             brush.blend = 'ADD'
 
         wm = context.window_manager
-        if "tpp_toolmode_on_screen" in wm:
+        if "ezp_toolmode_on_screen" in wm:
             init_temp_props()
             co2d = (event.mouse_region_x, event.mouse_region_y)
-            wm["tpp_toolmode_brushloc"] = co2d
+            wm["ezp_toolmode_brushloc"] = co2d
             args = (self, context)
             self._handle = bpy.types.SpaceView3D.draw_handler_add(\
                                                         toolmode_draw_callback,
@@ -1350,10 +1350,10 @@ class ToggleColorSoftLightScreen(Operator):
             brush.blend = 'SCREEN'
 
         wm = context.window_manager
-        if "tpp_toolmode_on_screen" in wm:
+        if "ezp_toolmode_on_screen" in wm:
             init_temp_props()
             co2d = (event.mouse_region_x, event.mouse_region_y)
-            wm["tpp_toolmode_brushloc"] = co2d
+            wm["ezp_toolmode_brushloc"] = co2d
             args = (self, context)
             self._handle = bpy.types.SpaceView3D.draw_handler_add(\
                                                         toolmode_draw_callback,
@@ -1381,10 +1381,10 @@ class ToggleAlphaMode(Operator):
             brush.blend = 'ADD_ALPHA'
 
         wm = context.window_manager
-        if "tpp_toolmode_on_screen" in wm:
+        if "ezp_toolmode_on_screen" in wm:
             init_temp_props()
             co2d = (event.mouse_region_x, event.mouse_region_y)
-            wm["tpp_toolmode_brushloc"] = co2d
+            wm["ezp_toolmode_brushloc"] = co2d
             args = (self, context)
             self._handle = bpy.types.SpaceView3D.draw_handler_add(\
                                                         toolmode_draw_callback,
@@ -1409,10 +1409,10 @@ class InitPaintBlend(Operator):
         brush.blend = 'MIX'
 
         wm = context.window_manager
-        if "tpp_toolmode_on_screen" in wm:
+        if "ezp_toolmode_on_screen" in wm:
             init_temp_props()
             co2d = (event.mouse_region_x, event.mouse_region_y)
-            wm["tpp_toolmode_brushloc"] = co2d
+            wm["ezp_toolmode_brushloc"] = co2d
             args = (self, context)
             self._handle = bpy.types.SpaceView3D.draw_handler_add(\
                                                         toolmode_draw_callback,
@@ -1450,9 +1450,9 @@ class AutoMergeUV(Operator):
 
     def invoke(self, context, event):
         wm = context.window_manager
-        if "tpp_automergeuv" not in wm:
+        if "ezp_automergeuv" not in wm:
             init_temp_props()
-        wm["tpp_automergeuv"] = True
+        wm["ezp_automergeuv"] = True
 
         km = bpy.context.window_manager.keyconfigs.default.keymaps['Mesh']
         for kmi in km.keymap_items:
@@ -1574,7 +1574,7 @@ def menu_func(self, context):
     layout = self.layout
     wm = context.window_manager
 
-    AME = "tpp_automergeuv"  in wm    # Astucieux! utilise "in"
+    AME = "ezp_automergeuv"  in wm    # Astucieux! utilise "in"
     Icon = 'CHECKBOX_HLT' if AME else 'CHECKBOX_DEHLT'
     layout.operator("paint.auto_merge_uv", icon = Icon)
 
