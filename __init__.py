@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-# python
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
@@ -20,8 +18,6 @@
 # ##### END GPL LICENSE BLOCK #####
 
 # <pep8 compliant>
-
-
 bl_info = {
     'name': 'EZ_Paint',
     'author': 'Bart Crouch, scorpion81, Spirou4D, artistCDMJ, brickmann',
